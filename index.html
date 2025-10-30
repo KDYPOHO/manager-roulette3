@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>매니저 가중치 룰렛 (랜덤 확률)</title>
+  <style>
+    :root{--bg:#0b1020;--panel:#111a33;--panel2:#0d1530;--text:#eaf2ff;--muted:#9bb0d6;--accent:#6ea8ff;--ok:#00d3a7;--warn:#ffc857;--err:#ff6b6b;--radius:16px;--shadow:0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04)}
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(1200px 800px at 10% -10%, #1e2a55 0%, transparent 60%),radial-gradient(1000px 600px at 90% 110%, #2c2855 0%, transparent 55%),var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic","맑은 고딕",sans-serif}
+    .wrap{max-width:920px;margin:28px auto;padding:0 16px}
+    header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+    h1{font-size:22px;margin:0;font-weight:800}
+    .sub{font-size:13px;color:var(--muted)}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    button{appearance:none;border:none;border-radius:12px;padding:12px 16px;background:var(--accent);color:#0b1020;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(110,168,255,.35)}
+    button.secondary{background:#243357;color:var(--text)}
+    button:disabled{opacity:.6;cursor:not-allowed}
+    table{width:100%;border-collapse:collapse;margin-top:12px}
+    th,td{padding:10px 12px;text-align:left;border-bottom:1px solid rgba(255,255,255,.08)}
+    th{font-size:12px;color:var(--muted);font-weight:700}
+    td.name{font-weight:700}
+    .badge{display:inline-block;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.12);font-size:12px}
+    .result{margin-top:16px;padding:16px;border-radius:14px;background:#0f1838;border:1px solid rgba(255,255,255,.08);display:flex;justify-content:space-between;align-items:center}
+    .winner{font-size:20px;font-weight:900}
+    .hint{font-size:12px;color:var(--muted)}
+    .footer{margin-top:16px;color:var(--muted);font-size:12px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>매니저 가중치 룰렛</h1>
+        <div class="sub">후보: <span class="badge">숲</span> <span class="badge">쥬이</span> <span class="badge">소금</span> <span class="badge">콜리</span> <span class="badge">맹구</span> · 매 회차 <b>확률을 랜덤</b>으로 섞어 추첨합니다.</div>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between;gap:8px">
+        <div class="sub">아래 확률은 매번 <b>무작위</b>로 생성됩니다. 필요하면 다시 섞은 뒤 뽑으세요.</div>
+        <div class="row">
+          <button id="shuffleBtn" class="secondary">확률 섞기</button>
+          <button id="drawBtn">랜덤 확률로 매니저 뽑기</button>
+        </div>
+      </div>
+
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th style="width:45%">후보</th>
+            <th style="width:25%">가중치(점수)</th>
+            <th style="width:30%)">확률(%)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <div id="result" class="result" style="display:none">
+        <div>
+          <div class="hint">이번 회차 당첨</div>
+          <div class="winner" id="winner"></div>
+        </div>
+        <button id="againBtn" class="secondary">확률 다시 섞고 재추첨</button>
+      </div>
+
+      <div class="footer">알고리즘: 각 후보에 무작위 양수 가중치를 부여 → 비율(%)로 정규화 → 가중치 추첨(cumulative). 가중치 합은 100%가 되며, 매 회차 결과는 가중치에 비례합니다.</div>
+    </section>
+  </div>
+
+  <script>
+    const candidates = ["숲","쥬이","소금","콜리","맹구"];
+    let weights = [];
+
+    function randomPositiveWeights(n){
+      // n개의 양수 난수 → 합으로 나눠 비율화 (Dirichlet(1,...,1) 느낌)
+      const raw = Array.from({length:n}, () => Math.random()+Number.EPSILON);
+      const sum = raw.reduce((a,b)=>a+b,0);
+      const ratios = raw.map(v=>v/sum);
+      // 보기 좋게 정수 %로, 총합 100 유지(최대 나머지 방식)
+      const perc = ratios.map(v=>Math.floor(v*100));
+      let rem = 100 - perc.reduce((a,b)=>a+b,0);
+      const fracs = ratios.map((v,i)=>({i,frac:v*100 - Math.floor(v*100)})).sort((a,b)=>b.frac-a.frac);
+      for(let k=0;k<rem;k++) perc[fracs[k%fracs.length].i]++;
+      // 가중치 점수는 임의의 10~100 사이 값으로 표시(보여주기용)
+      const scores = ratios.map(v=>Math.round(10 + v*90));
+      return { perc, scores };
+    }
+
+    function renderTable(){
+      const tbody = document.querySelector('#tbl tbody');
+      tbody.innerHTML = '';
+      candidates.forEach((name, idx)=>{
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class="name">${name}</td><td>${weights.scores[idx]}</td><td>${weights.perc[idx]}%</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function weightedPick(names, percent){
+      const r = Math.random()*100;
+      let cum = 0;
+      for(let i=0;i<names.length;i++){
+        cum += percent[i];
+        if(r<=cum) return names[i];
+      }
+      return names[names.length-1];
+    }
+
+    function shuffle(){
+      weights = randomPositiveWeights(candidates.length);
+      renderTable();
+      document.getElementById('result').style.display='none';
+    }
+
+    function draw(){
+      const pick = weightedPick(candidates, weights.perc);
+      document.getElementById('winner').textContent = `🎉 ${pick}`;
+      document.getElementById('result').style.display='flex';
+    }
+
+    document.getElementById('shuffleBtn').addEventListener('click', shuffle);
+    document.getElementById('againBtn').addEventListener('click', ()=>{shuffle(); draw();});
+    document.getElementById('drawBtn').addEventListener('click', draw);
+
+    // 초기 가중치 생성
+    shuffle();
+  </script>
+</body>
+</html>
